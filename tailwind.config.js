@@ -2,7 +2,8 @@
 export default {
   content: [
     "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+    "./*.{js,ts,jsx,tsx}",      // <--- IMPORTANTE: Olha arquivos na raiz (App.tsx, index.tsx)
+    "./components/**/*.{js,ts,jsx,tsx}" // <--- Olha na pasta components
   ],
   theme: {
     extend: {
@@ -12,9 +13,9 @@ export default {
       },
       colors: {
         brand: {
-          900: '#2a0a0a', // Deep meat red/brown
+          900: '#2a0a0a', 
           800: '#450a0a',
-          500: '#dc2626', // Fire red
+          500: '#dc2626',
           100: '#fee2e2',
         }
       },
