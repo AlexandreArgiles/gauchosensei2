@@ -1,17 +1,22 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css'; // Estilo do editor
-import { Printer, Edit3, Save, Languages, X, Loader2, Globe } from 'lucide-react';
+import ReactQuill, { Quill } from 'react-quill';
+import 'react-quill/dist/quill.snow.css'; 
+import { Printer, Edit3, Save, X, Loader2, Globe, Menu } from 'lucide-react';
 import { Article, ViewMode, Language } from '../types';
 import { DEEPL_API_KEY, CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from '../constants';
+
+// --- MÓDULO DE REDIMENSIONAMENTO ---
+import BlotFormatter from 'quill-blot-formatter';
+Quill.register('modules/blotFormatter', BlotFormatter);
 
 interface ArticleViewProps {
   article: Article | null;
   onUpdateArticle: (id: string, updates: Partial<Article>) => void;
   isAdmin: boolean;
+  onToggleMobileMenu: () => void; // Nova Prop
 }
 
-export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArticle, isAdmin }) => {
+export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArticle, isAdmin, onToggleMobileMenu }) => {
   const [mode, setMode] = useState<ViewMode>('view');
   const [currentLang, setCurrentLang] = useState<Language>('PT');
   const [isLoadingTranslation, setIsLoadingTranslation] = useState(false);
@@ -30,7 +35,6 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
     }
   }, [article?.id]);
 
-  // --- HANDLER DE UPLOAD DE IMAGEM ---
   const imageHandler = () => {
     const input = document.createElement('input');
     input.setAttribute('type', 'file');
@@ -42,20 +46,15 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
       if (!file) return;
 
       try {
-        let imageUrl = "";
-
-        // Se o usuário ainda não configurou, usa mock
         if (!CLOUDINARY_CLOUD_NAME || CLOUDINARY_CLOUD_NAME === "your_cloud_name") {
-            alert("Configure o Cloudinary no constants.ts para upload real.");
+            alert("Configure Cloudinary");
             return;
         }
 
-        // Upload Real para o Cloudinary
         const formData = new FormData();
         formData.append('file', file);
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
 
-        // Feedback visual simples
         const quill = quillRef.current?.getEditor();
         const range = quill?.getSelection(true);
         if (quill && range) {
@@ -69,38 +68,34 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
 
         if (!response.ok) throw new Error('Falha no upload');
         const data = await response.json();
-        imageUrl = data.secure_url;
 
-        // Substitui o texto "Uploading..." pela imagem
         if (quill && range) {
-            quill.deleteText(range.index, 13); // Deleta "📷 Uploading..."
-            quill.insertEmbed(range.index, 'image', imageUrl);
+            quill.deleteText(range.index, 13);
+            quill.insertEmbed(range.index, 'image', data.secure_url);
         }
 
       } catch (error) {
-        console.error("Erro no upload:", error);
-        alert("Erro ao fazer upload. Verifique se o Preset está como 'Unsigned' no Cloudinary.");
+        alert("Erro no upload.");
       }
     };
   };
 
   const modules = useMemo(() => ({
+    blotFormatter: {}, 
     toolbar: {
       container: [
         [{ 'header': [1, 2, false] }],
         ['bold', 'italic', 'underline'],
         [{ 'color': [] }, { 'background': [] }],
         [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-        ['link', 'image'], // Botão de imagem
+        [{ 'align': [] }],
+        ['link', 'image'],
         ['clean']
       ],
-      handlers: {
-        image: imageHandler
-      }
+      handlers: { image: imageHandler }
     }
   }), []);
 
-  // --- TRADUÇÃO (COM PROXY CORRIGIDO) ---
   const handleLanguageChange = async (lang: Language) => {
     if (!article) return;
     setCurrentLang(lang);
@@ -118,7 +113,6 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
     if (!article) return;
     setIsLoadingTranslation(true);
     try {
-      // Traduz título (texto simples) e conteúdo (HTML)
       const titleTrans = await translateText(article.title, targetLang, false);
       const contentTrans = await translateText(article.content, targetLang, true);
 
@@ -131,7 +125,6 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
         });
       }
     } catch (error) {
-      console.error(error);
       alert("Erro na tradução.");
       setCurrentLang('PT');
     } finally {
@@ -140,13 +133,9 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
   };
 
   const translateText = async (text: string, targetLang: string, isHtml: boolean): Promise<string | null> => {
-    if (!DEEPL_API_KEY || DEEPL_API_KEY === "YOUR_API_KEY_HERE") {
-       return `[${targetLang} Mock] ${text}`;
-    }
+    if (!DEEPL_API_KEY || DEEPL_API_KEY.includes("YOUR_API_KEY")) return `[Mock] ${text}`;
 
-    // USA O PROXY DO VITE AQUI
     const url = '/api/deepl';
-    
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -157,16 +146,13 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
         body: JSON.stringify({
           text: [text],
           target_lang: targetLang,
-          tag_handling: isHtml ? 'html' : undefined, // Mantém formatação do Quill
+          tag_handling: isHtml ? 'html' : undefined,
         }),
       });
-
-      if (!response.ok) throw new Error('DeepL Error');
+      if (!response.ok) throw new Error();
       const data = await response.json();
       return data.translations[0]?.text || null;
-    } catch (e) {
-      throw e;
-    }
+    } catch (e) { throw e; }
   };
 
   const handleSave = () => {
@@ -181,9 +167,19 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
 
   if (!article) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 text-gray-400">
-        <Globe size={48} className="mb-4" />
-        <p>Selecione um manual para começar</p>
+      <div className="flex-1 flex flex-col h-full bg-gray-50">
+        {/* Header Mobile para Estado Vazio */}
+        <div className="md:hidden h-16 border-b bg-white flex items-center px-4">
+            <button onClick={onToggleMobileMenu} className="p-2 -ml-2 text-slate-600">
+                <Menu size={24} />
+            </button>
+            <span className="ml-2 font-bold text-slate-800">Gaucho Sensei</span>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center text-gray-400 p-4 text-center">
+          <Globe size={48} className="mb-4 opacity-50" />
+          <p className="text-lg font-medium">Selecione um manual para começar</p>
+          <p className="text-sm mt-2">Use o menu {isAdmin ? 'para criar ou selecionar' : 'para navegar'}.</p>
+        </div>
       </div>
     );
   }
@@ -198,71 +194,79 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
   const isOriginal = currentLang === 'PT';
 
   return (
-    <div className={`flex-1 flex flex-col h-full bg-white font-sans`}>
-      {/* Toolbar */}
-      <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white print:hidden sticky top-0 z-10">
-        <div className="flex items-center bg-gray-100 rounded-lg p-1">
-          {['PT', 'JA', 'EN-US'].map((lang) => (
-             <button
-               key={lang}
-               onClick={() => handleLanguageChange(lang as Language)}
-               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${currentLang === lang ? 'bg-white shadow-sm text-black' : 'text-gray-500'}`}
-             >
-               {lang === 'PT' ? '🇧🇷 PT' : lang === 'JA' ? '🇯🇵 JP' : '🇺🇸 EN'}
-             </button>
-          ))}
+    <div className={`flex-1 flex flex-col h-full bg-white font-sans w-full`}>
+      {/* Toolbar / Header */}
+      <div className="h-16 border-b border-gray-200 flex items-center justify-between px-4 md:px-6 bg-white print:hidden sticky top-0 z-10 shrink-0">
+        <div className="flex items-center gap-3">
+          {/* Botão Hambúrguer (Só Mobile) */}
+          <button onClick={onToggleMobileMenu} className="md:hidden p-1 text-slate-600 hover:bg-gray-100 rounded">
+            <Menu size={24} />
+          </button>
+
+          {/* Botões de Idioma */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+            {['PT', 'JA', 'EN-US'].map((lang) => (
+               <button
+                 key={lang}
+                 onClick={() => handleLanguageChange(lang as Language)}
+                 className={`px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium transition-all ${currentLang === lang ? 'bg-white shadow-sm text-black' : 'text-gray-500'}`}
+               >
+                 {lang === 'PT' ? '🇧🇷' : lang === 'JA' ? '🇯🇵' : '🇺🇸'}
+                 <span className="hidden md:inline ml-1">{lang === 'EN-US' ? 'EN' : lang}</span>
+               </button>
+            ))}
+          </div>
         </div>
+
         <div className="flex gap-2">
             {mode === 'view' ? (
                 <>
                     {isAdmin && isOriginal && (
-                        <button onClick={() => setMode('edit')} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 rounded text-sm">
-                            <Edit3 size={18} /> Editar
+                        <button onClick={() => setMode('edit')} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 rounded text-sm text-slate-700">
+                            <Edit3 size={18} /> <span className="hidden md:inline">Editar</span>
                         </button>
                     )}
-                    <button onClick={() => window.print()} className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 text-white rounded text-sm">
-                        <Printer size={18} /> Imprimir
+                    <button onClick={() => window.print()} className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 text-white rounded text-sm hover:bg-slate-800">
+                        <Printer size={18} /> <span className="hidden md:inline">Imprimir</span>
                     </button>
                 </>
             ) : (
                 <>
                     <button onClick={() => setMode('view')} className="px-3 py-1.5 hover:bg-gray-100 rounded text-sm"><X size={18}/></button>
-                    <button onClick={handleSave} className="flex items-center gap-2 px-4 py-1.5 bg-green-600 text-white rounded text-sm"><Save size={18}/> Salvar</button>
+                    <button onClick={handleSave} className="flex items-center gap-2 px-4 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700"><Save size={18}/> Salvar</button>
                 </>
             )}
         </div>
       </div>
 
-      {/* Conteúdo */}
-      <div className="flex-1 overflow-y-auto p-8">
-        <div className="max-w-4xl mx-auto">
+      {/* Conteúdo com Scroll */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-8">
+        <div className="max-w-4xl mx-auto w-full">
             {mode === 'edit' ? (
                 <div className="flex flex-col gap-4 h-full">
                     <input 
                         value={editTitle} 
                         onChange={e => setEditTitle(e.target.value)} 
-                        className="text-3xl font-bold border-b pb-2 outline-none" 
+                        className="text-2xl md:text-3xl font-bold border-b pb-2 outline-none w-full" 
                         placeholder="Título do Procedimento"
                     />
-                    {/* Editor Visual Quill */}
                     <ReactQuill 
                         ref={quillRef}
                         theme="snow"
                         value={editContent}
                         onChange={setEditContent}
                         modules={modules}
-                        className="h-[60vh] mb-12"
+                        className="h-[50vh] md:h-[60vh] mb-12"
                     />
                 </div>
             ) : (
-                <article className="prose max-w-none">
+                <article className="prose prose-sm md:prose-lg max-w-none">
                     {isLoadingTranslation ? (
-                        <div className="flex flex-col items-center py-20"><Loader2 className="animate-spin mb-2"/>Traduzindo...</div>
+                        <div className="flex flex-col items-center py-20"><Loader2 className="animate-spin mb-2 text-amber-600"/>Traduzindo...</div>
                     ) : (
                         <>
-                            <h1 className="text-4xl font-bold mb-8">{displayTitle}</h1>
-                            {/* Renderiza HTML Seguro */}
-                            <div dangerouslySetInnerHTML={{ __html: displayContent }} />
+                            <h1 className="text-3xl md:text-4xl font-bold mb-6 md:mb-8 text-slate-900">{displayTitle}</h1>
+                            <div className="break-words" dangerouslySetInnerHTML={{ __html: displayContent }} />
                         </>
                     )}
                 </article>

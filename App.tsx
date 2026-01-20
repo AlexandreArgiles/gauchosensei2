@@ -11,6 +11,9 @@ const App: React.FC = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Estado para controlar o Menu Mobile
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // --- Carregar Dados do Supabase (Ao abrir o site) ---
   useEffect(() => {
@@ -20,7 +23,6 @@ const App: React.FC = () => {
   const fetchData = async () => {
     setIsLoading(true);
     
-    // 1. Buscar Categorias
     const { data: catData, error: catError } = await supabase
       .from('categories')
       .select('*')
@@ -29,14 +31,12 @@ const App: React.FC = () => {
     if (catError) console.error('Erro ao buscar categorias:', catError);
     else setCategories(catData || []);
 
-    // 2. Buscar Artigos
     const { data: artData, error: artError } = await supabase
       .from('articles')
       .select('*');
 
     if (artError) console.error('Erro ao buscar artigos:', artError);
     else {
-      // Mapear do banco (snake_case) para o app (camelCase)
       const formattedArticles: Article[] = (artData || []).map((item: any) => ({
         id: item.id,
         categoryId: item.category_id,
@@ -52,7 +52,6 @@ const App: React.FC = () => {
   };
 
   // --- Handlers (Ações) ---
-
   const handleAdminToggle = () => {
     if (isAdmin) setIsAdmin(false);
     else {
@@ -65,16 +64,10 @@ const App: React.FC = () => {
     if (!isAdmin) return;
     const name = prompt("Nome da nova categoria:");
     if (!name) return;
-    
     const newId = crypto.randomUUID();
-    
-    // Salvar no Banco
-    const { error } = await supabase
-      .from('categories')
-      .insert([{ id: newId, name: name }]);
-
+    const { error } = await supabase.from('categories').insert([{ id: newId, name: name }]);
     if (error) alert("Erro ao criar categoria");
-    else fetchData(); // Atualiza a tela
+    else fetchData();
   };
 
   const handleDeleteCategory = async (id: string) => {
@@ -93,7 +86,6 @@ const App: React.FC = () => {
 
   const handleAddArticle = async (categoryId: string) => {
     if (!isAdmin) return;
-    
     const newId = crypto.randomUUID();
     const newArticle = {
       id: newId,
@@ -103,13 +95,12 @@ const App: React.FC = () => {
       last_updated: Date.now(),
       translations: {}
     };
-
     const { error } = await supabase.from('articles').insert([newArticle]);
-
     if (error) alert("Erro ao criar artigo");
     else {
       await fetchData();
       setSelectedArticleId(newId);
+      setIsMobileMenuOpen(false); // Fecha o menu ao criar
     }
   };
 
@@ -126,25 +117,25 @@ const App: React.FC = () => {
   };
 
   const handleUpdateArticle = async (id: string, updates: Partial<Article>) => {
-    // Converter para o formato do banco
     const dbUpdates: any = {};
     if (updates.title) dbUpdates.title = updates.title;
     if (updates.content) dbUpdates.content = updates.content;
     if (updates.lastUpdated) dbUpdates.last_updated = updates.lastUpdated;
     if (updates.translations) dbUpdates.translations = updates.translations;
 
-    const { error } = await supabase
-      .from('articles')
-      .update(dbUpdates)
-      .eq('id', id);
+    const { error } = await supabase.from('articles').update(dbUpdates).eq('id', id);
 
     if (error) {
       console.error(error);
       alert("Erro ao salvar alterações");
     } else {
-      // Atualiza o estado localmente para parecer instantâneo
       setArticles(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
     }
+  };
+
+  const handleSelectArticle = (id: string) => {
+    setSelectedArticleId(id);
+    setIsMobileMenuOpen(false); // Fecha o menu no mobile ao clicar num artigo
   };
 
   const selectedArticle = articles.find(a => a.id === selectedArticleId) || null;
@@ -154,24 +145,44 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-gray-50 text-slate-900">
-      <Sidebar
-        categories={categories}
-        articles={articles}
-        selectedArticleId={selectedArticleId}
-        onSelectArticle={setSelectedArticleId}
-        onAddCategory={handleAddCategory}
-        onDeleteCategory={handleDeleteCategory}
-        onAddArticle={handleAddArticle}
-        onDeleteArticle={handleDeleteArticle}
-        isAdmin={isAdmin}
-        onToggleAdmin={handleAdminToggle}
-      />
-      <main className="flex-1 h-full relative">
+    <div className="flex h-screen w-screen overflow-hidden bg-gray-50 text-slate-900 relative">
+      
+      {/* Overlay Escuro (Só aparece no mobile quando menu está aberto) */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar Responsiva */}
+      <div className={`
+        fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 transform transition-transform duration-300 ease-in-out
+        md:relative md:translate-x-0
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <Sidebar
+          categories={categories}
+          articles={articles}
+          selectedArticleId={selectedArticleId}
+          onSelectArticle={handleSelectArticle}
+          onAddCategory={handleAddCategory}
+          onDeleteCategory={handleDeleteCategory}
+          onAddArticle={handleAddArticle}
+          onDeleteArticle={handleDeleteArticle}
+          isAdmin={isAdmin}
+          onToggleAdmin={handleAdminToggle}
+          onCloseMobile={() => setIsMobileMenuOpen(false)} // Passamos a função de fechar
+        />
+      </div>
+
+      {/* Conteúdo Principal */}
+      <main className="flex-1 h-full flex flex-col w-full relative">
         <ArticleView
           article={selectedArticle}
           onUpdateArticle={handleUpdateArticle}
           isAdmin={isAdmin}
+          onToggleMobileMenu={() => setIsMobileMenuOpen(true)} // Passamos a função de abrir
         />
       </main>
     </div>
