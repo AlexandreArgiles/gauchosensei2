@@ -1,19 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import ReactQuill, { Quill } from 'react-quill';
+import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css'; 
 import { Printer, Edit3, Save, X, Loader2, Globe, Menu } from 'lucide-react';
 import { Article, ViewMode, Language } from '../types';
 import { DEEPL_API_KEY, CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from '../constants';
 
-// --- MÓDULO DE REDIMENSIONAMENTO ---
-import BlotFormatter from 'quill-blot-formatter';
-Quill.register('modules/blotFormatter', BlotFormatter);
-
 interface ArticleViewProps {
   article: Article | null;
   onUpdateArticle: (id: string, updates: Partial<Article>) => void;
   isAdmin: boolean;
-  onToggleMobileMenu: () => void; // Nova Prop
+  onToggleMobileMenu: () => void;
 }
 
 export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArticle, isAdmin, onToggleMobileMenu }) => {
@@ -46,8 +42,8 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
       if (!file) return;
 
       try {
-        if (!CLOUDINARY_CLOUD_NAME || CLOUDINARY_CLOUD_NAME === "your_cloud_name") {
-            alert("Configure Cloudinary");
+        if (!CLOUDINARY_CLOUD_NAME) {
+            alert("Configure o Cloudinary no arquivo .env.local");
             return;
         }
 
@@ -75,13 +71,13 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
         }
 
       } catch (error) {
-        alert("Erro no upload.");
+        alert("Erro no upload da imagem.");
+        console.error(error);
       }
     };
   };
 
   const modules = useMemo(() => ({
-    blotFormatter: {}, 
     toolbar: {
       container: [
         [{ 'header': [1, 2, false] }],
@@ -133,9 +129,11 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
   };
 
   const translateText = async (text: string, targetLang: string, isHtml: boolean): Promise<string | null> => {
-    if (!DEEPL_API_KEY || DEEPL_API_KEY.includes("YOUR_API_KEY")) return `[Mock] ${text}`;
+    if (!DEEPL_API_KEY) return `[Sem Chave] ${text}`;
 
+    // URL relativa para funcionar com o Proxy (Vercel ou Vite)
     const url = '/api/deepl';
+    
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -149,7 +147,7 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
           tag_handling: isHtml ? 'html' : undefined,
         }),
       });
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw new Error('DeepL API Error');
       const data = await response.json();
       return data.translations[0]?.text || null;
     } catch (e) { throw e; }
@@ -168,7 +166,6 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
   if (!article) {
     return (
       <div className="flex-1 flex flex-col h-full bg-gray-50">
-        {/* Header Mobile para Estado Vazio */}
         <div className="md:hidden h-16 border-b bg-white flex items-center px-4">
             <button onClick={onToggleMobileMenu} className="p-2 -ml-2 text-slate-600">
                 <Menu size={24} />
@@ -184,7 +181,6 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
     );
   }
 
-  // Lógica de Exibição
   let displayTitle = article.title;
   let displayContent = article.content;
   if (currentLang !== 'PT' && article.translations?.[currentLang]) {
@@ -195,15 +191,12 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
 
   return (
     <div className={`flex-1 flex flex-col h-full bg-white font-sans w-full`}>
-      {/* Toolbar / Header */}
       <div className="h-16 border-b border-gray-200 flex items-center justify-between px-4 md:px-6 bg-white print:hidden sticky top-0 z-10 shrink-0">
         <div className="flex items-center gap-3">
-          {/* Botão Hambúrguer (Só Mobile) */}
           <button onClick={onToggleMobileMenu} className="md:hidden p-1 text-slate-600 hover:bg-gray-100 rounded">
             <Menu size={24} />
           </button>
 
-          {/* Botões de Idioma */}
           <div className="flex items-center bg-gray-100 rounded-lg p-1">
             {['PT', 'JA', 'EN-US'].map((lang) => (
                <button
@@ -239,7 +232,6 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
         </div>
       </div>
 
-      {/* Conteúdo com Scroll */}
       <div className="flex-1 overflow-y-auto p-4 md:p-8">
         <div className="max-w-4xl mx-auto w-full">
             {mode === 'edit' ? (
