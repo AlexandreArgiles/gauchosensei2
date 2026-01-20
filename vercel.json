@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/deepl",
+      "destination": "https://api-free.deepl.com/v2/translate"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
