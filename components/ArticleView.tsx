@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import ReactQuill from 'react-quill';
+import ReactQuill, { Quill } from 'react-quill';
 import 'react-quill/dist/quill.snow.css'; 
 import { Printer, Edit3, Save, X, Loader2, Globe, Menu } from 'lucide-react';
 import { Article, ViewMode, Language } from '../types';
@@ -17,6 +17,9 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
   const [currentLang, setCurrentLang] = useState<Language>('PT');
   const [isLoadingTranslation, setIsLoadingTranslation] = useState(false);
   
+  // Controle de carregamento do Plugin de Imagem
+  const [isQuillReady, setIsQuillReady] = useState(false);
+  
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   
@@ -30,6 +33,30 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
       setCurrentLang('PT'); 
     }
   }, [article?.id]);
+
+  // --- IMPORTAÇÃO DINÂMICA (A Mágica acontece aqui) ---
+  useEffect(() => {
+    const loadQuillPlugins = async () => {
+      if (typeof window !== 'undefined') {
+        try {
+          // Importa o formatador apenas no navegador
+          const { default: BlotFormatter } = await import('quill-blot-formatter');
+          
+          // Registra apenas se ainda não estiver registrado
+          if (!Quill.imports['modules/blotFormatter']) {
+            Quill.register('modules/blotFormatter', BlotFormatter);
+          }
+          setIsQuillReady(true);
+        } catch (error) {
+          console.error("Erro ao carregar plugin de imagem:", error);
+          // Mesmo com erro, libera o editor (sem redimensionamento)
+          setIsQuillReady(true);
+        }
+      }
+    };
+
+    loadQuillPlugins();
+  }, []);
 
   const imageHandler = () => {
     const input = document.createElement('input');
@@ -77,20 +104,26 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
     };
   };
 
-  const modules = useMemo(() => ({
-    toolbar: {
-      container: [
-        [{ 'header': [1, 2, false] }],
-        ['bold', 'italic', 'underline'],
-        [{ 'color': [] }, { 'background': [] }],
-        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-        [{ 'align': [] }],
-        ['link', 'image'],
-        ['clean']
-      ],
-      handlers: { image: imageHandler }
-    }
-  }), []);
+  const modules = useMemo(() => {
+    // Só ativa o blotFormatter se o plugin carregou com sucesso
+    if (!isQuillReady) return {}; 
+
+    return {
+      blotFormatter: {}, // <--- Agora seguro!
+      toolbar: {
+        container: [
+          [{ 'header': [1, 2, false] }],
+          ['bold', 'italic', 'underline'],
+          [{ 'color': [] }, { 'background': [] }],
+          [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+          [{ 'align': [] }],
+          ['link', 'image'],
+          ['clean']
+        ],
+        handlers: { image: imageHandler }
+      }
+    };
+  }, [isQuillReady]);
 
   const handleLanguageChange = async (lang: Language) => {
     if (!article) return;
@@ -131,7 +164,6 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
   const translateText = async (text: string, targetLang: string, isHtml: boolean): Promise<string | null> => {
     if (!DEEPL_API_KEY) return `[Sem Chave] ${text}`;
 
-    // URL relativa para funcionar com o Proxy (Vercel ou Vite)
     const url = '/api/deepl';
     
     try {
@@ -242,14 +274,23 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onUpdateArtic
                         className="text-2xl md:text-3xl font-bold border-b pb-2 outline-none w-full" 
                         placeholder="Título do Procedimento"
                     />
-                    <ReactQuill 
-                        ref={quillRef}
-                        theme="snow"
-                        value={editContent}
-                        onChange={setEditContent}
-                        modules={modules}
-                        className="h-[50vh] md:h-[60vh] mb-12"
-                    />
+                    
+                    {/* Renderizamos o editor APENAS quando o plugin estiver pronto */}
+                    {isQuillReady ? (
+                      <ReactQuill 
+                          ref={quillRef}
+                          theme="snow"
+                          value={editContent}
+                          onChange={setEditContent}
+                          modules={modules}
+                          className="h-[50vh] md:h-[60vh] mb-12"
+                      />
+                    ) : (
+                      <div className="h-[60vh] flex items-center justify-center bg-gray-50 border rounded-lg">
+                        <Loader2 className="animate-spin text-slate-400" size={32} />
+                        <span className="ml-2 text-slate-500">Carregando editor...</span>
+                      </div>
+                    )}
                 </div>
             ) : (
                 <article className="prose prose-sm md:prose-lg max-w-none">
