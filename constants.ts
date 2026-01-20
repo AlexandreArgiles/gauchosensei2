@@ -1,18 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
-import { Article, Category } from './types';
 
 // ---------------------------------------------------------
-// API CONFIGURATION
+// LEITURA DAS VARIÁVEIS DE AMBIENTE (.env)
 // ---------------------------------------------------------
-export const DEEPL_API_KEY = "8e728151-9d00-43e5-aeae-b026c3dbc91c:fx"; 
 
-export const CLOUDINARY_CLOUD_NAME = "ddym3nwwr";
-export const CLOUDINARY_UPLOAD_PRESET = "gaucho_preset";
+// DeepL
+export const DEEPL_API_KEY = import.meta.env.VITE_DEEPL_API_KEY || "";
 
-// ---------------------------------------------------------
-// SUPABASE CONFIGURATION
-// ---------------------------------------------------------
-const SUPABASE_URL = "https://dwmvlrlhpfnxmknlumvn.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3bXZscmxocGZueG1rbmx1bXZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MjUzOTYsImV4cCI6MjA4NDUwMTM5Nn0.8qEi2Mb1XQi4SHijCKJdq1Oy4VBLee8Y60NbnFnhxsU"; // Pegue em Settings > API
+// Cloudinary
+export const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "";
+export const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "";
+
+// Supabase
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+
+// Verificação de Segurança (Avisa no console se faltar algo)
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error("ERRO CRÍTICO: Variáveis do Supabase não encontradas. Verifique o arquivo .env.local");
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);

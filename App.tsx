@@ -1,24 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ArticleView } from './components/ArticleView';
+import { LoginModal } from './components/LoginModal'; // Import novo
 import { Category, Article } from './types';
 import { supabase } from './constants';
 
 const App: React.FC = () => {
   // --- Estado ---
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showLogin, setShowLogin] = useState(false); // Controle do modal
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Estado para controlar o Menu Mobile
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // --- Carregar Dados do Supabase (Ao abrir o site) ---
   useEffect(() => {
     fetchData();
+    checkSession(); // Verifica se já está logado ao abrir
   }, []);
+
+  // Verifica sessão ativa no Supabase
+  const checkSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    setIsAdmin(!!session); // Se tem sessão, é Admin
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -28,14 +35,14 @@ const App: React.FC = () => {
       .select('*')
       .order('created_at', { ascending: true });
 
-    if (catError) console.error('Erro ao buscar categorias:', catError);
+    if (catError) console.error('Erro categorias:', catError);
     else setCategories(catData || []);
 
     const { data: artData, error: artError } = await supabase
       .from('articles')
       .select('*');
 
-    if (artError) console.error('Erro ao buscar artigos:', artError);
+    if (artError) console.error('Erro artigos:', artError);
     else {
       const formattedArticles: Article[] = (artData || []).map((item: any) => ({
         id: item.id,
@@ -51,22 +58,27 @@ const App: React.FC = () => {
     setIsLoading(false);
   };
 
-  // --- Handlers (Ações) ---
-  const handleAdminToggle = () => {
-    if (isAdmin) setIsAdmin(false);
-    else {
-      const pin = prompt("Senha de Gerente:");
-      if (pin === '1234') setIsAdmin(true);
+  // --- Handlers de Autenticação ---
+  const handleAdminToggle = async () => {
+    if (isAdmin) {
+      // Logout
+      await supabase.auth.signOut();
+      setIsAdmin(false);
+    } else {
+      // Abrir Modal de Login
+      setShowLogin(true);
     }
   };
 
+  // --- Handlers de Dados (CRUD) ---
   const handleAddCategory = async () => {
     if (!isAdmin) return;
     const name = prompt("Nome da nova categoria:");
     if (!name) return;
     const newId = crypto.randomUUID();
     const { error } = await supabase.from('categories').insert([{ id: newId, name: name }]);
-    if (error) alert("Erro ao criar categoria");
+    
+    if (error) alert("Erro ao criar (Verifique permissões)");
     else fetchData();
   };
 
@@ -100,7 +112,7 @@ const App: React.FC = () => {
     else {
       await fetchData();
       setSelectedArticleId(newId);
-      setIsMobileMenuOpen(false); // Fecha o menu ao criar
+      setIsMobileMenuOpen(false);
     }
   };
 
@@ -117,6 +129,7 @@ const App: React.FC = () => {
   };
 
   const handleUpdateArticle = async (id: string, updates: Partial<Article>) => {
+    if (!isAdmin) return; // Proteção extra no front
     const dbUpdates: any = {};
     if (updates.title) dbUpdates.title = updates.title;
     if (updates.content) dbUpdates.content = updates.content;
@@ -127,7 +140,7 @@ const App: React.FC = () => {
 
     if (error) {
       console.error(error);
-      alert("Erro ao salvar alterações");
+      alert("Erro ao salvar. Você está logado?");
     } else {
       setArticles(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
     }
@@ -135,19 +148,27 @@ const App: React.FC = () => {
 
   const handleSelectArticle = (id: string) => {
     setSelectedArticleId(id);
-    setIsMobileMenuOpen(false); // Fecha o menu no mobile ao clicar num artigo
+    setIsMobileMenuOpen(false);
   };
 
   const selectedArticle = articles.find(a => a.id === selectedArticleId) || null;
 
   if (isLoading) {
-    return <div className="flex items-center justify-center h-screen text-slate-500">Carregando dados...</div>;
+    return <div className="flex items-center justify-center h-screen text-slate-500">Carregando sistema...</div>;
   }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-gray-50 text-slate-900 relative">
       
-      {/* Overlay Escuro (Só aparece no mobile quando menu está aberto) */}
+      {/* Modal de Login */}
+      {showLogin && (
+        <LoginModal 
+          onClose={() => setShowLogin(false)} 
+          onSuccess={() => { setIsAdmin(true); setShowLogin(false); }} 
+        />
+      )}
+
+      {/* Overlay Mobile */}
       {isMobileMenuOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
@@ -155,7 +176,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Sidebar Responsiva */}
+      {/* Sidebar */}
       <div className={`
         fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 transform transition-transform duration-300 ease-in-out
         md:relative md:translate-x-0
@@ -172,17 +193,16 @@ const App: React.FC = () => {
           onDeleteArticle={handleDeleteArticle}
           isAdmin={isAdmin}
           onToggleAdmin={handleAdminToggle}
-          onCloseMobile={() => setIsMobileMenuOpen(false)} // Passamos a função de fechar
+          onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
       </div>
 
-      {/* Conteúdo Principal */}
       <main className="flex-1 h-full flex flex-col w-full relative">
         <ArticleView
           article={selectedArticle}
           onUpdateArticle={handleUpdateArticle}
           isAdmin={isAdmin}
-          onToggleMobileMenu={() => setIsMobileMenuOpen(true)} // Passamos a função de abrir
+          onToggleMobileMenu={() => setIsMobileMenuOpen(true)}
         />
       </main>
     </div>
